@@ -3,6 +3,7 @@ library(plotly)
 
 ui <- navbarPage(
   title = "Ebg408 Data Analysis Ver2.0",
+  selected = "cp",
   #page1-key result briefing ####
   tabPanel("phenomenon",
            headerPanel("phenomenon"),
@@ -29,31 +30,51 @@ ui <- navbarPage(
            )
            ),
   #page2-Patterns and Points of change setting ####
-  tabPanel("behavior-analysis",
-           headerPanel("behavior-analysis"),
+  tabPanel("change point",
+           value = "cp",
+           headerPanel("change point"),
            sidebarPanel(
-             selectInput("group.ba",
+             selectInput("group.cp",
                          label = "select group",
                          choices = c(1:80)),
-             radioButtons("movavg.ba",
-                          label = "movavg no.",
-                          choices = list("1","2","3","4","5","6","7","8","9","10"),
-                          selected = "5",
-                          inline = TRUE)
-           ),
+             radioButtons("threshold.cp",
+                          label = "point-threshold",
+                          choices = c(3, 4, 5, 6, 7), 
+                          selected = 5,
+                          inline = TRUE),
+             sliderInput("spar.cp",
+                         label = "smooth-spar",
+                         min = 0, 
+                         max = 1,
+                         value = 0.8)
+             ),
            mainPanel(
-               fluidRow(
-                 splitLayout(
-                   tabPanel("p1action_type", tableOutput("p1action_type")),
-                   tabPanel("p2action_type", tableOutput("p2action_type"))
-                 ),
-                 splitLayout(
-                   tabPanel("p1change_point", tableOutput("p1change_point")),
-                   tabPanel("p2change_point", tableOutput("p2change_point"))
-                 )
-               )
-             
-           )),
+             tabsetPanel(
+               tabPanel("point",
+                        fluidRow(
+                          splitLayout(cellWidths = c("70%","30%"),
+                                      plotlyOutput("cp.plot1"),
+                                      tableOutput("cp.tbl1")
+                          ),
+                          splitLayout(cellWidths = c("70%","30%"),
+                                      plotlyOutput("cp.plot2"),
+                                      tableOutput("cp.tbl2")
+                          )
+                        )
+               ),
+               tabPanel("smooth",
+                        fluidRow(
+                          splitLayout(cellWidths = c("70%","30%"),
+                                      plotlyOutput("cp.smth.plot1"),
+                                      tableOutput("cp.smth.tbl1")
+                          ),
+                          splitLayout(cellWidths = c("70%","30%"),
+                                      plotlyOutput("cp.smth.plot2"),
+                                      tableOutput("cp.smth.tbl2")
+                          )
+                        ))
+             )
+             )),
   #page3-Correlations and Causalities finding ####
   tabPanel("causalities finding & labeling",
            headerPanel("causalities finding & labeling"),

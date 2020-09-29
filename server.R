@@ -195,207 +195,252 @@ server <- function(input, output){
   
   
   #2.output-patterns ####
-    #2.1 action change point
+    #2.1 by point
+    cp.data1 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2-1
+        return(ChangePointAlgorithm(player.no, as.integer(input$threshold.cp)))
+    })
+    cp.data2 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2
+      return(ChangePointAlgorithm(player.no, as.integer(input$threshold.cp)))
+    })
     
-    at1.selected.data <- reactive({
-      selected.group.ba <- as.integer(input$group.ba)
-      p1.number.ba = selected.group.ba*2-1
-      at1.data <- fileset[[p1.number.ba]] %>%
-        mutate(., buy = ifelse(fileset[[p1.number.ba]]$p1Decision=="buy",1,0)
-               , sell = ifelse(fileset[[p1.number.ba]]$p1Decision=="sell",1,0)
-               , notrade = ifelse(fileset[[p1.number.ba]]$p1Decision=="no trade",1,0))%>%
-        mutate(.,mov_buy = rollsum(buy, 5, fill = NA, align = "right"),
-               mov_sell = rollsum(sell, 5, fill = NA, align = "right"),
-               mov_notrade = rollsum(notrade, 5, fill = NA, align = "right")) %>% 
-        mutate(.,Decision = p1Decision, lag_Decision = lag(p1Decision)) %>% 
-        select(., Trials, Decision, lag_Decision, mov_buy, mov_sell, mov_notrade)
-    })
-    at2.selected.data <- reactive({
-      selected.group.ba <- as.integer(input$group.ba)
-      p2.number.ba = selected.group.ba*2
-      at2.data <- fileset[[p2.number.ba]] %>%
-        mutate(., buy = ifelse(fileset[[p2.number.ba]]$p2Decision=="buy",1,0)
-               , sell = ifelse(fileset[[p2.number.ba]]$p2Decision=="sell",1,0)
-               , notrade = ifelse(fileset[[p2.number.ba]]$p2Decision=="no trade",1,0))%>%
-        mutate(.,mov_buy = rollsum(buy, 5, fill = NA, align = "right"),
-               mov_sell = rollsum(sell, 5, fill = NA, align = "right"),
-               mov_notrade = rollsum(notrade, 5, fill = NA, align = "right")) %>% 
-        mutate(.,Decision = p2Decision,lag_Decision = lag(p2Decision)) %>% 
-        select(., Trials, Decision, lag_Decision, mov_buy, mov_sell, mov_notrade)
-    })
-    #type table
-    #change point
-    output$p1change_point <- renderTable({
-      #p1
-      selected.data1 <- at1.selected.data()
-      type_list1 <- list()
-      trials_s_list1 <- list()
-      trials_e_list1 <- list()
-      for (i in 5:101) {
-        if(selected.data1$mov_buy[i] >= 4){
-          trials_s_list1 <- append(trials_s_list1, i-4)
-          trials_e_list1 <- append(trials_e_list1, i)
-          type_list1 <- append(type_list1,"80% buy")
-        }else if(selected.data1$mov_sell[i] >= 4){
-          trials_s_list1 <- append(trials_s_list1, i-4)
-          trials_e_list1 <- append(trials_e_list1, i)
-          type_list1 <- append(type_list1,"80% sell")
-        }else if(selected.data1$mov_notrade[i] >= 4){
-          trials_s_list1 <- append(trials_s_list1, i-4)
-          trials_e_list1 <- append(trials_e_list1, i)
-          type_list1 <- append(type_list1,"80% no trade")
+    MaxIndex <- function(vctr, cp){
+      tmp.value = vctr[[cp]]
+      tmp.j = cp
+      for (j in cp:length(vctr)){
+        if (!is.na(vctr[[j]]) & abs(vctr[[j]]) > abs(tmp.value)){
+          tmp.value = vctr[[j]]
+          tmp.j = j
         }else{
-          j = i-4
-          table <- table(selected.data1$Decision[j], selected.data1$lag_Decision[j])
-          if(table[4,2]==1){
-            j = j+1
-            table1 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-            if(table1[2,4]==1){
-              j = j+1
-              table2 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-              if(table2[4,2]==1){
-                j = j+1
-                table3 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-                if(table3[2,4]==1){
-                  j = j+1
-                  table4 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-                  if(table4[4,2]==1){
-                    trials_s_list1 <- append(trials_s_list1, selected.data1$Trials[j-4])
-                    trials_e_list1 <- append(trials_e_list1, selected.data1$Trials[j])
-                    type_list1 <- append(type_list1,"cross")
-                  }
-                }
-              }
-            }
-          }
-          if(table[2,4]==1){
-            j = j+1
-            table1 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-            if(table1[4,2]==1){
-              j = j+1
-              table2 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-              if(table2[2,4]==1){
-                j = j+1
-                table3 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-                if(table3[4,2]==1){
-                  j = j+1
-                  table4 = table(selected.data1$Decision[j],selected.data1$lag_Decision[j])
-                  if(table4[2,4]==1){
-                    trials_s_list1 <- append(trials_s_list1, selected.data1$Trials[j-4])
-                    trials_e_list1 <- append(trials_e_list1, selected.data1$Trials[j])
-                    type_list1 <- append(type_list1,"cross")
-                  }
-                }
-              }
-            }
+          tmp.value = tmp.value
+          tmp.j = tmp.j
+        }
+      }
+      return(c(tmp.value, tmp.j))
+      
+    }
+    ChangePointAlgorithm <- function(player.no, threshold){
+      #set data
+      player.data <- fileset[[player.no]][-101,]
+      
+      if (player.no%%2 ==1){
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p1Decision,
+                                  stock = player.data$p1Stock) %>%
+          mutate(., lag_action = lag(action)) %>%
+          filter(., action != lag_action | trial == c(1,100))
+        
+      }else{
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p2Decision,
+                                  stock = player.data$p2Stock) %>%
+          mutate(., lag_action = lag(action)) %>%
+          filter(., action != lag_action | trial == c(1,100))
+        
+      }
+      
+      mat.data <- rep(needed.data$stock, length(needed.data$stock))
+      mat.n <- length(needed.data$stock) # number of candidate point
+      mat.bycol <- matrix(mat.data, ncol = mat.n, byrow = FALSE, dimnames = list(needed.data$trial, needed.data$trial))
+      mat.byrow <- matrix(mat.data, ncol = mat.n, byrow = TRUE, dimnames = list(needed.data$trial, needed.data$trial))
+      mat.substract <- mat.bycol - mat.byrow
+      
+      for (i in 1:mat.n){
+        for (j in 1:mat.n){
+          if(i <= j){
+            mat.substract[i,j] = NA
           }
         }
       }
-      trials_s_df1 <- do.call(rbind, trials_s_list1)
-      trials_e_df1 <- do.call(rbind, trials_e_list1)
-      type_df1 <- do.call(rbind, type_list1)
-      change_point.data1 <- data.frame(start = trials_s_df1, end = trials_e_df1, type = type_df1)
-      change_point_list1 <- list()
-      for(n in 1:length(change_point.data1$type)){
-        for (m in 1:length(change_point.data1$type)){
-          if(change_point.data1$end[n]+2 == change_point.data1$start[m]){
-            if(change_point.data1$type[n] != change_point.data1$type[m]){
-              change_point_list1 <- append(change_point_list1, change_point.data1$end[n]+1)
+      
+      #algorithm
+      i <- 2 
+      j <- 1 
+      cp.former = 1 
+      result = list()
+      trial.tag = rownames(mat.substract)
+      
+      while(i < mat.n) {
+        ith.rowdata = mat.substract[i,]
+        tmp.substr.value = MaxIndex(ith.rowdata, cp.former)[1]
+        tmp.index = MaxIndex(ith.rowdata, cp.former)[2] #也就是j，意義不大，只是最後要呈現
+        
+        if(!is.na(tmp.substr.value) & abs(tmp.substr.value) >= threshold){
+          record.data = TRUE
+          substr.value = tmp.substr.value
+          end.loop = FALSE
+          while(end.loop == FALSE){
+            if (record.data){
+              cp.latter = i #停下來的那個點暫存為Change Point
+            }
+            
+            if(i==mat.n) {
+              result[[i]] <- data.frame(cp_former = trial.tag[cp.former], cp_latter = trial.tag[cp.latter])
+              break
+            }
+            # 探索下一個轉折點
+            i <- i + 1
+            next.ith.rowdata = mat.substract[i,]
+            check.break.loop.list <- list()
+            check.contin.loop.list <- list()
+            for (j in cp.former:length(next.ith.rowdata)){
+              check.break.loop.list[j] <- abs(next.ith.rowdata[j])>=threshold & substr.value*next.ith.rowdata[j]<0
+              check.contin.loop.list[j] <- abs(next.ith.rowdata[j]) >= abs(substr.value)
+            }
+            check.break.loop <- ifelse(TRUE %in% check.break.loop.list, TRUE, FALSE)
+            check.contin.loop <- ifelse(TRUE %in% check.contin.loop.list, TRUE, FALSE)
+            if (check.break.loop){ # 如果再下一個點出現顯著轉折，停止搜尋
+              result[[i]] <- data.frame(cp_former = trial.tag[cp.former], cp_latter = trial.tag[cp.latter])
+              cp.former = cp.latter
+              i = cp.latter + 1
+              end.loop = TRUE
+              
+            }else if (check.contin.loop){
+              substr.value = MaxIndex(next.ith.rowdata, cp.former)[1]
+              record.data = TRUE
+              
+            }else {
+              record.data = FALSE
             }
           }
-        }
-      }
-      change_point1 <- do.call(rbind, change_point_list1)
-      p1change_point <- data.frame(p1 = change_point1)
-      return(p1change_point)
-    })
-    output$p2change_point <- renderTable({
-      #p2
-      selected.data2 <- at2.selected.data()
-      type_list2 <- list()
-      trials_s_list2 <- list()
-      trials_e_list2 <- list()
-      for (i in 5:101) {
-        if(selected.data2$mov_buy[i] >= 4){
-          trials_s_list2 <- append(trials_s_list2, i-4)
-          trials_e_list2 <- append(trials_e_list2, i)
-          type_list2 <- append(type_list2,"80% buy")
-        }else if(selected.data2$mov_sell[i] >= 4){
-          trials_s_list2 <- append(trials_s_list2, i-4)
-          trials_e_list2 <- append(trials_e_list2, i)
-          type_list2 <- append(type_list2,"80% sell")
-        }else if(selected.data2$mov_notrade[i] >= 4){
-          trials_s_list2 <- append(trials_s_list2, i-4)
-          trials_e_list2 <- append(trials_e_list2, i)
-          type_list2 <- append(type_list2,"80% no trade")
+          
         }else{
-          j = i-4
-          table <- table(selected.data2$Decision[j], selected.data2$lag_Decision[j])
-          if(table[4,2]==1){
-            j = j+1
-            table1 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-            if(table1[2,4]==1){
-              j = j+1
-              table2 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-              if(table2[4,2]==1){
-                j = j+1
-                table3 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-                if(table3[2,4]==1){
-                  j = j+1
-                  table4 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-                  if(table4[4,2]==1){
-                    trials_s_list2 <- append(trials_s_list2, selected.data2$Trials[j-4])
-                    trials_e_list2 <- append(trials_e_list2, selected.data2$Trials[j])
-                    type_list2 <- append(type_list2,"cross")
-                  }
-                }
-              }
-            }
-          }
-          if(table[2,4]==1){
-            j = j+1
-            table1 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-            if(table1[4,2]==1){
-              j = j+1
-              table2 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-              if(table2[2,4]==1){
-                j = j+1
-                table3 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-                if(table3[4,2]==1){
-                  j = j+1
-                  table4 = table(selected.data2$Decision[j],selected.data2$lag_Decision[j])
-                  if(table4[2,4]==1){
-                    trials_s_list2 <- append(trials_s_list2, selected.data2$Trials[j-4])
-                    trials_e_list2 <- append(trials_e_list2, selected.data2$Trials[j])
-                    type_list2 <- append(type_list2,"cross")
-                  }
-                }
-              }
-            }
-          }
+          i <- i+1
         }
+      } #end of algorithm
+      
+      result.table <- do.call(rbind, result)
+      
+      return(result.table)
+    } #end of function
+    PlotFunc <- function(player.no, cp.data){
+      player.data <- fileset[[player.no]][-101,]
+      
+      if (player.no%%2 ==1){
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p1Decision,
+                                  stock = player.data$p1Stock)
+        
+      }else{
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p2Decision,
+                                  stock = player.data$p2Stock)
+        
       }
-      trials_s_df2 <- do.call(rbind, trials_s_list2)
-      trials_e_df2 <- do.call(rbind, trials_e_list2)
-      type_df2 <- do.call(rbind, type_list2)
-      change_point.data2 <- data.frame(start = trials_s_df2, end = trials_e_df2, type = type_df2)
-      change_point_list2 <- list()
-      for(n in 1:length(change_point.data2$type)){
-        for (m in 1:length(change_point.data2$type)){
-          if(change_point.data2$end[n]+2 == change_point.data2$start[m]){
-            if(change_point.data2$type[n] != change_point.data2$type[m]){
-              change_point_list2 <- append(change_point_list2, change_point.data2$end[n]+1)
-            }
-          }
-        }
-      }
-      change_point2 <- do.call(rbind, change_point_list2)
-      p2change_point <- data.frame(p2 = change_point2)
-      return(p2change_point)
+      plt <- ggplot(needed.data, aes(x=trial, y=stock)) +
+        ggtitle(paste0("Subject No. ",player.no))+
+        geom_point(aes(color=action))+
+        geom_vline(xintercept = as.integer(cp.data$cp_latter), color = "grey50")
+        
+      ggplotly(plt)
+      
+    }
+    
+    output$cp.tbl1 <- renderTable({
+      cp.data1() %>%
+        select(., cp_latter)
+    })
+    output$cp.tbl2 <- renderTable({
+      cp.data2()%>%
+        select(., cp_latter)
     })
     
-    #2.2 stockprice change point
+    output$cp.plot1 <- renderPlotly({
+      PlotFunc(as.integer(input$group.cp)*2-1, cp.data1())
+    })
+    output$cp.plot2 <- renderPlotly({
+      PlotFunc(as.integer(input$group.cp)*2, cp.data2())
+    })
+
+    #2.2 by smooth
+    CreateSmoothData <- function(player.no, spar){
+      # set data
+      player.data <- fileset[[player.no]][-101,]
+      
+      if (player.no%%2 ==1){
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p1Decision,
+                                  stock = player.data$p1Stock) %>%
+          mutate(., lag_action = lag(action))
+        
+      }else{
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p2Decision,
+                                  stock = player.data$p2Stock) %>%
+          mutate(., lag_action = lag(action))
+      }
+      
+      # smooth it
+      smth <- smooth.spline(needed.data$trial, needed.data$stock, spar = spar)
+      smooth.data <- data.frame(trial = smth$x, smth_stock = smth$y)
+      return(smooth.data)
+    }
+    SmoothAlgorithm <- function(smthed.data){
+      #find cp
+      find.cp <- c(FALSE, diff(diff(smthed.data$smth_stock)>0)!=0)
+      smooth.result <- data.frame(cp = which(find.cp==TRUE))
+      return(smooth.result)
+    }
+    PlotFuncSmooth <- function(player.no, smth.data){
+      player.data <- fileset[[player.no]][-101,]
+      
+      if (player.no%%2 ==1){
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p1Decision,
+                                  stock = player.data$p1Stock)
+        
+      }else{
+        needed.data <- data.frame(trial = player.data$Trials,
+                                  action = player.data$p2Decision,
+                                  stock = player.data$p2Stock)
+        
+      }
+      # get cps
+      smth.result = SmoothAlgorithm(smth.data)
+      if (length(smth.result$cp)!= 0){
+        cps = smth.result$cp
+      }else{
+        cps = 100
+      }
+      # plot
+      plt <- ggplot(needed.data, aes(x=trial, y=stock)) +
+        ggtitle(paste0("Subject No. ",player.no))+
+        geom_point(aes(color=action))+
+        geom_line(data=smth.data, aes(x=trial, y=smth_stock))+
+        geom_vline(xintercept = cps, color = "grey50")
+      
+      ggplotly(plt)
+      
+    }
     
+    cp.smth.data1 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2-1
+      return(CreateSmoothData(player.no, input$spar.cp))
+    })
+    cp.smth.data2 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2
+      
+      return(CreateSmoothData(player.no, input$spar.cp))
+    })
+
+    output$cp.smth.tbl1 <- renderTable({
+      SmoothAlgorithm(cp.smth.data1())
+    })
+    output$cp.smth.tbl2 <- renderTable({
+      SmoothAlgorithm(cp.smth.data2())
+    })
+    
+    output$cp.smth.plot1 <- renderPlotly({
+      PlotFuncSmooth(as.integer(input$group.cp)*2-1, cp.smth.data1())
+    })
+    output$cp.smth.plot2 <- renderPlotly({
+      PlotFuncSmooth(as.integer(input$group.cp)*2, cp.smth.data2())
+    })
     
   #3.output-causalities finding ####
     #3.1 stockprice
