@@ -196,17 +196,6 @@ server <- function(input, output){
   
   #2.output-patterns ####
     #2.1 by point
-    cp.data1 <- reactive({
-      group.no = as.integer(input$group.cp)
-      player.no = group.no*2-1
-        return(ChangePointAlgorithm(player.no, as.integer(input$threshold.cp)))
-    })
-    cp.data2 <- reactive({
-      group.no = as.integer(input$group.cp)
-      player.no = group.no*2
-      return(ChangePointAlgorithm(player.no, as.integer(input$threshold.cp)))
-    })
-    
     MaxIndex <- function(vctr, cp){
       tmp.value = vctr[[cp]]
       tmp.j = cp
@@ -222,7 +211,8 @@ server <- function(input, output){
       return(c(tmp.value, tmp.j))
       
     }
-    ChangePointAlgorithm <- function(player.no, threshold){
+    #1009版本
+    ChangePointAlgorithm <- function(player.no, threshold, threshold.small, threshold.small.trials){
       #set data
       player.data <- fileset[[player.no]][-101,]
       
@@ -256,17 +246,20 @@ server <- function(input, output){
         }
       }
       
-      #algorithm
+      # 2.演算法正式開始
       i <- 2 
       j <- 1 
-      cp.former = 1 
+      cp.former = 1
+      cp.latter = 1  # 不初始化的話，沒有轉折點的就跑不出來
       result = list()
-      trial.tag = rownames(mat.substract)
+      result.index = 1
+      trial.tag = as.integer(rownames(mat.substract))
+      next.pattern.shno = TRUE
       
       while(i < mat.n) {
         ith.rowdata = mat.substract[i,]
         tmp.substr.value = MaxIndex(ith.rowdata, cp.former)[1]
-        tmp.index = MaxIndex(ith.rowdata, cp.former)[2] #也就是j，意義不大，只是最後要呈現
+        tmp.first.value.of.row = mat.substract[i, cp.former]
         
         if(!is.na(tmp.substr.value) & abs(tmp.substr.value) >= threshold){
           record.data = TRUE
@@ -278,7 +271,10 @@ server <- function(input, output){
             }
             
             if(i==mat.n) {
-              result[[i]] <- data.frame(cp_former = trial.tag[cp.former], cp_latter = trial.tag[cp.latter])
+              result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
+                                                   cp_latter = trial.tag[cp.latter],
+                                                   type = ifelse(substr.value > 0, "long", "short"))
+              result.index = result.index + 1
               break
             }
             # 探索下一個轉折點
@@ -288,12 +284,16 @@ server <- function(input, output){
             check.contin.loop.list <- list()
             for (j in cp.former:length(next.ith.rowdata)){
               check.break.loop.list[j] <- abs(next.ith.rowdata[j])>=threshold & substr.value*next.ith.rowdata[j]<0
-              check.contin.loop.list[j] <- abs(next.ith.rowdata[j]) >= abs(substr.value)
+              check.contin.loop.list[j] <- abs(next.ith.rowdata[j]) > abs(substr.value)
             }
             check.break.loop <- ifelse(TRUE %in% check.break.loop.list, TRUE, FALSE)
             check.contin.loop <- ifelse(TRUE %in% check.contin.loop.list, TRUE, FALSE)
-            if (check.break.loop){ # 如果再下一個點出現顯著轉折，停止搜尋
-              result[[i]] <- data.frame(cp_former = trial.tag[cp.former], cp_latter = trial.tag[cp.latter])
+            if (check.break.loop){
+              result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
+                                                   cp_latter = trial.tag[cp.latter],
+                                                   type = ifelse(substr.value > 0, "long", "short"))
+              result.index = result.index + 1
+              
               cp.former = cp.latter
               i = cp.latter + 1
               end.loop = TRUE
@@ -306,16 +306,75 @@ server <- function(input, output){
               record.data = FALSE
             }
           }
+          next.pattern.shno = TRUE # 此次搜索沒有短期/不交易失敗的情形，下一次可以
+        }  #搜尋短期/不交易波段行情
+        else if(!is.na(tmp.first.value.of.row) & abs(tmp.first.value.of.row) <= threshold.small & next.pattern.shno){
+          end.loop = FALSE
+          tmp.cp = cp.former  #預設轉折點從上一個策略轉折點開始
+          sum.shno = 0
+          while(end.loop == FALSE){
+            
+            #若看到最後一個點了，直接儲存資料，跳出迴圈
+            if(i==mat.n){
+              result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
+                                                   cp_latter = trial.tag[cp.latter],
+                                                   type = "others")
+              result.index = result.index + 1
+              break
+            }
+            
+            #探索下一個轉折點
+            i <- i + 1
+            next.ith.pointdata = mat.substract[i, cp.former]
+            #條件一：變動數小於等於1
+            if (abs(next.ith.pointdata) <= threshold.small & sum.shno == 0){#下一個轉折點變動一樣很小
+              tmp.cp = i
+              sum.shno = sum.shno + abs(next.ith.pointdata)
+              
+            }else{
+              end.loop = TRUE
+              #條件二：持續回合數大於等於10
+              lasting.trials = as.integer(trial.tag[tmp.cp]) - as.integer(trial.tag[cp.former])
+              if (lasting.trials >= threshold.small.trials){
+                #儲存資料
+                cp.latter = tmp.cp
+                result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
+                                                     cp_latter = trial.tag[cp.latter],
+                                                     type = "others")
+                result.index = result.index + 1
+                #設定下次迴圈資料
+                cp.former = cp.latter
+                i = cp.latter + 1
+              }else{
+                next.pattern.shno = FALSE # 此次搜索失敗，下一次的搜索不可能是短期/不交易
+              }
+            } #下一個轉折點變動太大
+            
+          } #繼續探索下一個點以確認行情的持續迴圈
           
         }else{
           i <- i+1
         }
       } #end of algorithm
       
+      # 處理最後一個區間
+      if (trial.tag[cp.latter]+1 >= 95){
+        result[[result.index - 1]]['cp_latter'] <- 100  # 併入前一個
+        
+      }else if (cp.latter == 1){
+        result[[result.index]] <- data.frame(cp_former = 1,
+                                             cp_latter = 100,
+                                             type = "others")
+        
+      }else{
+        result[[result.index]] <- data.frame(cp_former = trial.tag[cp.latter]+1,
+                                             cp_latter = 100,
+                                             type = "others")
+        
+      }
       result.table <- do.call(rbind, result)
-      
       return(result.table)
-    } #end of function
+    }
     PlotFunc <- function(player.no, cp.data){
       player.data <- fileset[[player.no]][-101,]
       
@@ -334,19 +393,34 @@ server <- function(input, output){
         ggtitle(paste0("Subject No. ",player.no))+
         geom_point(aes(color=action))+
         geom_vline(xintercept = as.integer(cp.data$cp_latter), color = "grey50")
-        
+      
       ggplotly(plt)
       
     }
     
+    cp.data1 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2-1
+      threshold.cp = as.integer(input$threshold.cp)
+      threshold.small.cp = as.integer(input$threshold.small.cp)
+      threshold.small.trials.cp = as.integer(input$threshold.small.trials.cp)
+      return(ChangePointAlgorithm(player.no, threshold.cp, threshold.small.cp, threshold.small.trials.cp))
+    })
+    cp.data2 <- reactive({
+      group.no = as.integer(input$group.cp)
+      player.no = group.no*2
+      threshold.cp = as.integer(input$threshold.cp)
+      threshold.small.cp = as.integer(input$threshold.small.cp)
+      threshold.small.trials.cp = as.integer(input$threshold.small.trials.cp)
+      return(ChangePointAlgorithm(player.no, threshold.cp, threshold.small.cp, threshold.small.trials.cp))
+    })
+    
     output$cp.tbl1 <- renderTable({
-      cp.data1() %>%
-        select(., cp_latter)
-    })
+      cp.data1()
+    }, digits = 0)
     output$cp.tbl2 <- renderTable({
-      cp.data2()%>%
-        select(., cp_latter)
-    })
+      cp.data2()
+    }, digits = 0)
     
     output$cp.plot1 <- renderPlotly({
       PlotFunc(as.integer(input$group.cp)*2-1, cp.data1())
@@ -354,6 +428,75 @@ server <- function(input, output){
     output$cp.plot2 <- renderPlotly({
       PlotFunc(as.integer(input$group.cp)*2, cp.data2())
     })
+    
+    cp.alldata <- reactive({
+      result.list <- list() 
+      threshold.cp = as.integer(input$threshold.cp)
+      threshold.small.cp = as.integer(input$threshold.small.cp)
+      threshold.small.trials.cp = as.integer(input$threshold.small.trials.cp)
+      
+      for (i in c(1:160)){
+        cps <- ChangePointAlgorithm(i, threshold.cp, threshold.small.cp, threshold.small.trials.cp)$cp_latter
+        if (length(cps) != 0){
+          result.list[[i]] <- cps
+        }else{
+          result.list[[i]] <- NA
+        }
+      }
+      result.table <- plyr::ldply(result.list, rbind)
+      return(result.table)
+    })
+    output$cp.alltable <- renderDataTable({
+      player.no = c(1:160)
+      cp.alldata()
+      return(cbind(player.no, cp.alldata()))
+    })
+    output$downloadData <- downloadHandler(
+
+      filename = function() { 
+        paste("change_point-", 
+              input$threshold.cp, 
+              input$threshold.small.cp, 
+              input$threshold.small.trials.cp, 
+              ".csv", sep="-")
+      },
+      content = function(file) {
+        write.csv(cp.alldata(), file)
+      })
+    
+    data.allplot <- reactive({
+      threshold.cp = as.integer(input$threshold.cp)
+      threshold.small.cp = as.integer(input$threshold.small.cp)
+      threshold.small.trials.cp = as.integer(input$threshold.small.trials.cp)
+      
+      cp.result.all.list = list()
+      for (i in 1:160){
+        cp.result <- cbind(player = i, ChangePointAlgorithm(i, threshold.cp, threshold.small.cp, threshold.small.trials.cp)) %>%
+          mutate(., stage = c(1:length(player)),
+                    len = cp_latter - cp_former + 1)
+        cp.result.all.list[[i]] <- cp.result
+      }
+      cp.result.all <- do.call(rbind, cp.result.all.list)
+      
+      return(cp.result.all)
+    })
+    output$cp.allplot <- renderPlotly({
+      
+      g <- ggplot(data.allplot(), aes(x = player, y = len, group = stage, fill = type, label = cp_former, label1 = cp_latter)) +
+        geom_col(position = position_stack(reverse = TRUE)) +
+        scale_x_reverse(limits = c(161, 0), 
+                        breaks = seq(160, 1, by = -1),
+                        labels = c(160:1))+
+        coord_flip() +
+        scale_fill_manual(breaks = c("long", "short", "others"), 
+                          values=c("#e63946", "#2a9d8f", "#e9c46a"))+
+        theme_minimal()
+      
+      ggplotly(g, height = 4500) %>%
+        layout(xaxis = list(autorange = TRUE),
+               yaxis = list(autorange = TRUE))
+    })
+
 
     #2.2 by smooth
     CreateSmoothData <- function(player.no, spar){

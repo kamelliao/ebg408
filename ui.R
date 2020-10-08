@@ -42,6 +42,16 @@ ui <- navbarPage(
                           choices = c(3, 4, 5, 6, 7), 
                           selected = 5,
                           inline = TRUE),
+             radioButtons("threshold.small.cp",
+                          label = "point-threshold-small",
+                          choices = c(0, 1, 2), 
+                          selected = 1,
+                          inline = TRUE),
+             radioButtons("threshold.small.trials.cp",
+                          label = "point-threshold-small-trials",
+                          choices = c(5, 10, 15, 20), 
+                          selected = 10,
+                          inline = TRUE),
              sliderInput("spar.cp",
                          label = "smooth-spar",
                          min = 0, 
@@ -61,6 +71,13 @@ ui <- navbarPage(
                                       tableOutput("cp.tbl2")
                           )
                         )
+               ),
+               tabPanel("point-all-tabel",
+                        downloadButton("downloadData", label = "Download"),
+                        dataTableOutput("cp.alltable")
+               ),
+               tabPanel("point-all-plot",
+                        plotlyOutput("cp.allplot")
                ),
                tabPanel("smooth",
                         fluidRow(
