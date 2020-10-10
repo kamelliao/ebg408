@@ -50,7 +50,7 @@ ui <- navbarPage(
              radioButtons("threshold.small.trials.cp",
                           label = "point-threshold-small-trials",
                           choices = c(5, 10, 15, 20), 
-                          selected = 10,
+                          selected = 15,
                           inline = TRUE),
              sliderInput("spar.cp",
                          label = "smooth-spar",
