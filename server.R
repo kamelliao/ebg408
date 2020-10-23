@@ -261,6 +261,7 @@ server <- function(input, output){
         tmp.substr.value = MaxIndex(ith.rowdata, cp.former)[1]
         tmp.first.value.of.row = mat.substract[i, cp.former]
         
+        # 類型一：多/空波段行情
         if(!is.na(tmp.substr.value) & abs(tmp.substr.value) >= threshold){
           record.data = TRUE
           substr.value = tmp.substr.value
@@ -273,7 +274,7 @@ server <- function(input, output){
             if(i==mat.n) {
               result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
                                                    cp_latter = trial.tag[cp.latter],
-                                                   type = ifelse(substr.value > 0, "long", "short"))
+                                                   type = ifelse(substr.value > 0, "long-position", "short-position"))
               result.index = result.index + 1
               break
             }
@@ -288,10 +289,10 @@ server <- function(input, output){
             }
             check.break.loop <- ifelse(TRUE %in% check.break.loop.list, TRUE, FALSE)
             check.contin.loop <- ifelse(TRUE %in% check.contin.loop.list, TRUE, FALSE)
-            if (check.break.loop){
+            if (check.break.loop | trial.tag[i] - trial.tag[cp.latter] >= threshold.small.trials){
               result[[result.index]] <- data.frame(cp_former = trial.tag[cp.former] + ifelse(cp.former==1, 0, 1),
                                                    cp_latter = trial.tag[cp.latter],
-                                                   type = ifelse(substr.value > 0, "long", "short"))
+                                                   type = ifelse(substr.value > 0, "long-position", "short-position"))
               result.index = result.index + 1
               
               cp.former = cp.latter
@@ -307,8 +308,8 @@ server <- function(input, output){
             }
           }
           next.pattern.shno = TRUE # 此次搜索沒有短期/不交易失敗的情形，下一次可以
-        }  #搜尋短期/不交易波段行情
-        else if(!is.na(tmp.first.value.of.row) & abs(tmp.first.value.of.row) <= threshold.small & next.pattern.shno){
+          #搜尋短期/不交易波段行情
+        }else if(!is.na(tmp.first.value.of.row) & abs(tmp.first.value.of.row) <= threshold.small & next.pattern.shno){
           end.loop = FALSE
           tmp.cp = cp.former  #預設轉折點從上一個策略轉折點開始
           sum.shno = 0
@@ -333,7 +334,7 @@ server <- function(input, output){
               
             }else{
               end.loop = TRUE
-              #條件二：持續回合數大於等於10
+              #條件二：持續回合數大於等於threshold.small.trials
               lasting.trials = as.integer(trial.tag[tmp.cp]) - as.integer(trial.tag[cp.former])
               if (lasting.trials >= threshold.small.trials){
                 #儲存資料
@@ -358,7 +359,7 @@ server <- function(input, output){
       } #end of algorithm
       
       # 處理最後一個區間
-      if (trial.tag[cp.latter]+1 >= 95){
+      if (trial.tag[cp.latter]+1 >= (100-threshold.small.trials)){
         result[[result.index - 1]]['cp_latter'] <- 100  # 併入前一個
         
       }else if (cp.latter == 1){
@@ -372,7 +373,20 @@ server <- function(input, output){
                                              type = "others")
         
       }
+      
+
       result.table <- do.call(rbind, result)
+      
+      # 融合重疊的區間
+      i = 2
+      while(i <= length(result.table[,1])){
+        if (result.table[i,]$type == result.table[i-1,]$type){
+          result.table[i-1,]$cp_latter = result.table[i,]$cp_latter
+          result.table <- result.table[-i,]
+        }
+        i = i + 1
+      }
+      
       return(result.table)
     }
     PlotFunc <- function(player.no, cp.data){
@@ -488,7 +502,7 @@ server <- function(input, output){
                         breaks = seq(160, 1, by = -1),
                         labels = c(160:1))+
         coord_flip() +
-        scale_fill_manual(breaks = c("long", "short", "others"), 
+        scale_fill_manual(breaks = c("long-position", "short-position", "others"), 
                           values=c("#e63946", "#2a9d8f", "#e9c46a"))+
         theme_minimal()
       
