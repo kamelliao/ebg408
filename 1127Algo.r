@@ -64,13 +64,7 @@ ChangePointAlgorithm_1127 <- function(player.no){
   mat.subtract <- mat.bycol - mat.byrow
   
   # discard the repeated upper right half of the matrix
-  for (i in 1:mat.n){
-    for (j in 1:mat.n){
-      if(i < j){
-        mat.subtract[i,j] = NA
-      }
-    }
-  }
+  mat.subtract[upper.tri(mat.subtract)] <- NA
   
   # corresponding exact trial no.
   # will be used to reference trial no. in the algorithm
