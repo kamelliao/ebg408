@@ -91,8 +91,9 @@ ChangePointAlgorithm_1127 <- function(player.no){
       start.point <- initial.NMD[['NMDneighbor']]
       end.point <- i.point
       
-      # examine whether the pattern continues among the next 10 trials (after current end point)
-      # if continue, update end point
+      # examine whether the pattern continues among the next 10 trials (after current end.point)
+      # if continue, update end.point to the new one
+      # there are chances that start.point may update too
       previous.NMD <- initial.NMD  # for comparison
       while (i.point <= mat.n & exact.trial.no[i.point] - exact.trial.no[end.point] <= 10){
         # directly save result if it is the last point
