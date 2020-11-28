@@ -80,9 +80,8 @@ ChangePointAlgorithm_1127 <- function(player.no){
   
   # start algorithm
   while (i.point <= mat.n){
-    row.i.data <- mat.subtract[i.point,]
     # calculate NearestMaxDistance
-    initial.NMD <- NearestMaxDistance(row.i.data, i.previous.point, i.point)
+    initial.NMD <- NearestMaxDistance(mat.subtract[i.point,], i.previous.point, i.point)
     
     # initialization
     # if pair with NearestMaxDistance >= 5 is found
