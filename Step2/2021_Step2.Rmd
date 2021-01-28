@@ -1,0 +1,27 @@
+---
+title: "2021_step2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# import packages
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+# load ULB segment data
+filepath = "D:\\ebg408\\data\\segment_data_ULB"
+filenames = list.files(path = filepath, pattern="*.csv")
+fileset <- lapply(paste0(filepath, "/", filenames), read.csv)
+
+```
+
+```{r}
+
+```
+
